@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>にゃんこタワー</title>
+<meta name="theme-color" content="#dff4ff">
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:linear-gradient(#e9f7ff,#f8fbff);color:#192235;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+body{min-height:100vh}.page{width:min(1120px,calc(100% - 16px));margin:auto;padding:18px 0 50px}
+h1{font-size:clamp(30px,5vw,52px);margin:0}.sub{color:#657084;margin:5px 0 16px}.grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px;align-items:start}
+.card{background:#fff;border:1px solid #dbe4ef;border-radius:18px;overflow:hidden;box-shadow:0 10px 28px #324c7012}
+.top{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid #e4eaf2;flex-wrap:wrap}
+.stats{display:flex;gap:18px}.label{display:block;font-size:10px;color:#7b8798;font-weight:800}.value{font-weight:950;font-size:21px}
+.next{background:#eef2ff;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800}.stage{position:relative;aspect-ratio:4/5;background:#dff4ff}
+canvas{display:block;width:100%;height:100%;touch-action:none}.loading,.over{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px}
+.loading{background:#eff9ffed;font-weight:900}.over{background:#1018289e}.overbox{background:white;border-radius:20px;padding:22px;width:min(380px,100%)}.overbox h2{margin:0;font-size:30px}.final{font-size:42px;font-weight:950;margin:6px 0}
+.controls{display:grid;grid-template-columns:1fr auto;gap:10px;padding:12px 14px;border-top:1px solid #e4eaf2}.pad{display:flex;gap:8px;flex-wrap:wrap}
+button{min-height:44px;border:1px solid #cad5e2;background:#fff;border-radius:12px;padding:0 16px;font-weight:850;color:#1f2937}button:active{transform:translateY(1px)}
+.primary{border:none;background:linear-gradient(135deg,#ffb000,#ff7600);color:white;min-width:120px}.side{display:grid;gap:14px}.panel{padding:15px}.panel h2{font-size:18px;margin:0 0 10px}
+.nick{display:flex;gap:7px}.nick input{min-width:0;flex:1;border:1px solid #cad5e2;border-radius:11px;padding:10px 11px;font-size:16px}.small{min-height:40px;padding:0 12px}
+.note,.status{font-size:12px;line-height:1.55;color:#6b7585}.status{min-height:19px;margin-top:7px}.ranks{display:grid;gap:7px}.rank{display:grid;grid-template-columns:30px 1fr auto;gap:7px;align-items:center;padding:8px 9px;background:#f6f8fb;border-radius:11px}.rank:nth-child(-n+3){background:#fff7df}.rn{font-weight:950;text-align:center}.name{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rs{font-weight:950}
+.debug{display:flex;justify-content:space-between;gap:10px;align-items:center;border-top:1px solid #e5eaf0;margin-top:11px;padding-top:11px}
+@media(max-width:830px){.grid{grid-template-columns:1fr}.stage{max-height:none}.side{grid-template-columns:1fr}}
+@media(max-width:520px){.page{width:calc(100% - 8px);padding-top:8px}.controls{grid-template-columns:1fr}.pad{display:grid;grid-template-columns:repeat(4,1fr)}.primary{width:100%}.top{align-items:flex-start}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+</head>
+<body>
+<div class="page">
+<h1>にゃんこタワー</h1>
+<p class="sub">にゃんこを積み上げてハイスコアを狙え。落ちたら終了。</p>
+<div class="grid">
+<section class="card">
+<div class="top">
+<div class="stats">
+<div><span class="label">SCORE</span><span id="score" class="value">0</span></div>
+<div><span class="label">積んだ数</span><span id="count" class="value">0</span></div>
+<div><span class="label">高さ</span><span id="height" class="value">0</span></div>
+</div>
+<div id="next" class="next">準備中…</div>
+</div>
+<div class="stage">
+<canvas id="game" width="700" height="875"></canvas>
+<div id="loading" class="loading">全身画像から当たり判定を生成中…</div>
+<div id="over" class="over" hidden><div class="overbox"><h2>GAME OVER</h2><div id="final" class="final">0</div><div id="resultText"></div><br><button id="retry" class="primary">もう一度</button></div></div>
+</div>
+<div class="controls"><div class="pad"><button id="left">←</button><button id="rotL">↶</button><button id="rotR">↷</button><button id="right">→</button></div><button id="drop" class="primary">落とす</button></div>
+</section>
+<aside class="side">
+<section class="card panel"><h2>ランキング登録</h2><div class="nick"><input id="nick" maxlength="16" placeholder="ニックネーム"><button id="submit" class="small" disabled>登録</button></div><div id="submitStatus" class="status">ゲーム終了後に登録できます</div><div class="debug"><span class="note">赤線＝実際の当たり判定</span><label><input id="debug" type="checkbox"> 表示</label></div></section>
+<section class="card panel"><h2>ランキング</h2><div id="ranks" class="ranks"></div><div id="rankStatus" class="status">読み込み中…</div></section>
+<section class="card panel"><h2>操作</h2><p class="note">左右で位置移動、↶↷で回転、落とすで落下。PCは ← → / Q E / Space でも操作できます。<br><br>当たり判定はPNGの透明部分を除外し、実際に描かれている頭・胴体・脚などから複数の剛体を自動生成します。</p></section>
+</aside>
+</div>
+</div>
+<script>
+(()=>{
+const M=window.Matter;if(!M){document.getElementById("loading").textContent="物理エンジンの読み込みに失敗しました";return}
+const W=700,H=875,FLOOR=785,PLATFORM=360;
+const cats=[
+["neko","ネコ",112],["tank","タンクネコ",142],["battle","バトルネコ",128],["kimo","キモネコ",160],["ushi","ウシネコ",142],["bird","ネコノトリ",142],["fish","ネコフィッシュ",146],["lizard","ネコトカゲ",150],["giant","巨神ネコ",170]
+].map(([id,name,size])=>({id,name,size,url:"/api/nyanko-image?id="+id}));
+const el=id=>document.getElementById(id), canvas=el("game"),ctx=canvas.getContext("2d");
+let engine,platform,current=null,pieces=[],geos=new Map(),cameraTop=0,settle=0,over=false,debug=false,score=0,count=0,height=0,raf=0;
+const loadImage=url=>new Promise((ok,ng)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ng;i.src=url});
+function makeGeo(img,maxSize){
+ const scale=maxSize/Math.max(img.naturalWidth,img.naturalHeight),w=Math.max(40,Math.round(img.naturalWidth*scale)),h=Math.max(40,Math.round(img.naturalHeight*scale));
+ const c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(img,0,0,w,h);const d=x.getImageData(0,0,w,h),g=Math.max(5,Math.round(maxSize/22)),gw=Math.ceil(w/g),gh=Math.ceil(h/g);
+ const mask=Array.from({length:gh},()=>Array(gw).fill(false));
+ for(let yy=0;yy<gh;yy++)for(let xx=0;xx<gw;xx++){let hit=0,total=0;for(let y=yy*g;y<Math.min(h,(yy+1)*g);y+=2)for(let z=xx*g;z<Math.min(w,(xx+1)*g);z+=2){total++;if(d.data[(y*w+z)*4+3]>55)hit++}mask[yy][xx]=total&&hit/total>=.10}
+ const active=new Map(),done=[];
+ for(let y=0;y<gh;y++){const runs=[];let x0=0;while(x0<gw){while(x0<gw&&!mask[y][x0])x0++;if(x0>=gw)break;const a=x0;while(x0<gw&&mask[y][x0])x0++;runs.push([a,x0])}const next=new Map();for(const [a,b] of runs){const k=a+":"+b;if(active.has(k)){const r=active.get(k);r.y1=y+1;next.set(k,r)}else next.set(k,{x0:a,x1:b,y0:y,y1:y+1})}for(const [k,r] of active)if(!next.has(k))done.push(r);active.clear();for(const [k,r] of next)active.set(k,r)}done.push(...active.values());
+ const rects=done.map(r=>({x:(r.x0+r.x1)*g/2-w/2,y:(r.y0+r.y1)*g/2-h/2,w:Math.min(w,(r.x1-r.x0)*g),h:Math.min(h,(r.y1-r.y0)*g)})).filter(r=>r.w>=4&&r.h>=4);
+ return{img,w,h,rects:rects.length?rects:[{x:0,y:0,w:w*.75,h:h*.75}]}
+}
+function makePiece(cat,x,y){
+ const geo=geos.get(cat.id),parts=geo.rects.map(r=>M.Bodies.rectangle(x+r.x,y+r.y,r.w,r.h,{friction:.78,frictionStatic:1,restitution:.025,density:.0018,render:{visible:false}}));
+ const body=M.Body.create({parts,friction:.78,frictionStatic:1,restitution:.025,frictionAir:.008});
+ const ox=x-body.position.x,oy=y-body.position.y;return{cat,geo,body,ox,oy}
+}
+function randomCat(){return cats[Math.floor(Math.random()*cats.length)]}
+function spawn(){if(over)return;const cat=randomCat(),y=cameraTop+95,p=makePiece(cat,W/2,y);M.Body.setStatic(p.body,true);M.Composite.add(engine.world,p.body);current=p;el("next").textContent="次："+cat.name}
+function recalc(){
+ count=pieces.length;let high=FLOOR;if(pieces.length)high=Math.min(...pieces.map(p=>p.body.bounds.min.y));height=Math.max(0,Math.round(FLOOR-high));score=count*1000+height*10;
+ el("count").textContent=count;el("height").textContent=height;el("score").textContent=score.toLocaleString();
+ const target=Math.min(0,high-160);cameraTop+=(target-cameraTop)*.08
+}
+function move(dx){if(!current||!current.body.isStatic||over)return;const half=current.geo.w/2;M.Body.setPosition(current.body,{x:Math.max(half+6,Math.min(W-half-6,current.body.position.x+dx)),y:cameraTop+95})}
+function rotate(d){if(current&&current.body.isStatic&&!over)M.Body.rotate(current.body,d)}
+function drop(){if(!current||!current.body.isStatic||over)return;M.Body.setStatic(current.body,false);M.Body.setVelocity(current.body,{x:0,y:.25});settle=0}
+function drawPiece(p,preview){
+ ctx.save();ctx.translate(p.body.position.x,p.body.position.y-cameraTop);ctx.rotate(p.body.angle);ctx.globalAlpha=preview?.93:1;ctx.drawImage(p.geo.img,p.ox-p.geo.w/2,p.oy-p.geo.h/2,p.geo.w,p.geo.h);ctx.restore();
+ if(debug){ctx.save();ctx.translate(0,-cameraTop);ctx.strokeStyle="#ff1744aa";ctx.lineWidth=1;const ps=p.body.parts.length>1?p.body.parts.slice(1):p.body.parts;for(const part of ps){ctx.beginPath();part.vertices.forEach((v,i)=>i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y));ctx.closePath();ctx.stroke()}ctx.restore()}
+}
+function gameOver(){if(over)return;over=true;recalc();el("final").textContent=score.toLocaleString();el("resultText").textContent=count+"体 / 高さ "+height;el("over").hidden=false;el("submit").disabled=false;el("submitStatus").textContent="このスコアを登録できます"}
+function reset(){for(const p of pieces)M.Composite.remove(engine.world,p.body);if(current)M.Composite.remove(engine.world,current.body);pieces=[];current=null;cameraTop=0;settle=0;over=false;score=count=height=0;el("over").hidden=true;el("submit").disabled=true;el("submitStatus").textContent="ゲーム終了後に登録できます";recalc();setTimeout(spawn,80)}
+async function rankings(){
+ try{const r=await fetch("/api/nyanko-score",{cache:"no-store"}),d=await r.json();el("ranks").innerHTML=(d.scores||[]).slice(0,10).map((s,i)=>'<div class="rank"><div class="rn">'+(i+1)+'</div><div class="name"></div><div class="rs">'+Number(s.score).toLocaleString()+'</div></div>').join("")||'<div class="note">まだ記録がありません</div>';[...el("ranks").querySelectorAll(".name")].forEach((n,i)=>n.textContent=d.scores[i].nickname);el("rankStatus").textContent=d.persistent?"全ユーザー共有ランキング":"共有ランキング（試験運用）"}catch{el("rankStatus").textContent="ランキング取得に失敗しました"}
+}
+async function submit(){
+ const nickname=el("nick").value.trim();if(!nickname){el("submitStatus").textContent="ニックネームを入力してください";return}el("submitStatus").textContent="送信中…";
+ try{const r=await fetch("/api/nyanko-score",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({nickname,score,count,height})}),d=await r.json();if(!r.ok)throw Error(d.error||"送信失敗");el("submitStatus").textContent="登録しました！";rankings()}catch(e){el("submitStatus").textContent=e.message||"送信失敗"}
+}
+function loop(){
+ M.Engine.update(engine,1000/60);recalc();ctx.clearRect(0,0,W,H);const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,"#d9f3ff");sky.addColorStop(.76,"#f9fdff");sky.addColorStop(.761,"#b7dc78");sky.addColorStop(1,"#8fbd58");ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+ ctx.fillStyle="#735039";ctx.fillRect((W-PLATFORM)/2,FLOOR-14-cameraTop,PLATFORM,28);ctx.fillStyle="#5e402e";ctx.fillRect((W-PLATFORM+42)/2,FLOOR+14-cameraTop,PLATFORM-42,70);
+ for(const p of pieces)drawPiece(p,false);if(current)drawPiece(current,current.body.isStatic);
+ if(current&&current.body.isStatic)M.Body.setPosition(current.body,{x:current.body.position.x,y:cameraTop+95});
+ if(current&&!current.body.isStatic&&!over){const s=current.body.speed+current.body.angularSpeed*18;if(s<.16&&current.body.position.y>cameraTop+180)settle+=1000/60;else settle=0;if(settle>850){pieces.push(current);current=null;settle=0;recalc();setTimeout(spawn,180)}}
+ const all=pieces.concat(current?[current]:[]);if(!over&&all.some(p=>p.body.position.y>FLOOR+240||p.body.position.x<-160||p.body.position.x>W+160))gameOver();
+ raf=requestAnimationFrame(loop)
+}
+async function init(){
+ try{const loaded=await Promise.all(cats.map(async c=>[c.id,makeGeo(await loadImage(c.url),c.size)]));for(const [id,g] of loaded)geos.set(id,g);engine=M.Engine.create({gravity:{x:0,y:1,scale:.00112},enableSleeping:true});platform=M.Bodies.rectangle(W/2,FLOOR,PLATFORM,28,{isStatic:true,friction:1,frictionStatic:1});M.Composite.add(engine.world,platform);el("loading").remove();spawn();rankings();loop()}catch(e){el("loading").textContent="キャラ画像の準備に失敗しました"}
+}
+el("left").onclick=()=>move(-24);el("right").onclick=()=>move(24);el("rotL").onclick=()=>rotate(-Math.PI/18);el("rotR").onclick=()=>rotate(Math.PI/18);el("drop").onclick=drop;el("retry").onclick=reset;el("debug").onchange=e=>debug=e.target.checked;el("submit").onclick=submit;
+addEventListener("keydown",e=>{if(e.target.tagName==="INPUT")return;if(e.key==="ArrowLeft"){e.preventDefault();move(-20)}else if(e.key==="ArrowRight"){e.preventDefault();move(20)}else if(e.key.toLowerCase()==="q")rotate(-Math.PI/18);else if(e.key.toLowerCase()==="e")rotate(Math.PI/18);else if(e.key===" "||e.key==="Enter"){e.preventDefault();drop()}});
+init();
+})();
+</script>
+</body></html>
